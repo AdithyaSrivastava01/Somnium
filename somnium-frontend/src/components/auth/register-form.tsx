@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc/client";
 import { useAuthStore } from "@/stores/auth-store";
 import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
+import { getCsrfToken } from "@/hooks/use-csrf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -43,8 +44,9 @@ export function RegisterForm() {
   });
 
   const registerMutation = trpc.auth.register.useMutation({
-    onSuccess: ({ tokens, user }) => {
-      setAuth(user, tokens.access_token, tokens.refresh_token);
+    onSuccess: ({ user }) => {
+      // Tokens are now in httpOnly cookies, only store user info
+      setAuth(user);
 
       // Redirect to the page they were trying to access, or dashboard
       const redirectTo = searchParams.get("redirect") || "/dashboard";
@@ -52,8 +54,14 @@ export function RegisterForm() {
     },
   });
 
-  const onSubmit = (data: RegisterInput) => {
-    registerMutation.mutate(data);
+  const onSubmit = async (data: RegisterInput) => {
+    try {
+      const csrfToken = await getCsrfToken();
+      registerMutation.mutate({ ...data, csrfToken });
+    } catch (error) {
+      // Handle CSRF token fetch error
+      console.error("Failed to fetch CSRF token:", error);
+    }
   };
 
   return (

@@ -5,11 +5,19 @@ Somnium ECMO Platform - Main FastAPI Application
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import IntegrityError
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi_csrf_protect import CsrfProtect
+from fastapi_csrf_protect.exceptions import CsrfProtectError
+from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
@@ -20,6 +28,67 @@ from app.core.exceptions import (
     integrity_exception_handler,
     general_exception_handler,
 )
+
+
+# CSRF Settings
+class CsrfSettings(BaseModel):
+    """CSRF protection settings."""
+
+    secret_key: str = settings.CSRF_SECRET_KEY or settings.SECRET_KEY
+    cookie_key: str = (
+        settings.CSRF_COOKIE_NAME
+    )  # Library expects 'cookie_key' not 'cookie_name'
+    header_name: str = settings.CSRF_HEADER_NAME
+    cookie_samesite: str = "lax"
+    cookie_secure: bool = not settings.DEBUG
+    httponly: bool = False  # CSRF token needs to be accessible by JS
+    max_age: int = 3600  # 1 hour
+
+
+@CsrfProtect.load_config
+def get_csrf_config():
+    """Load CSRF configuration."""
+    return CsrfSettings()
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    Add security headers to all responses for HIPAA/SOC2 compliance.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Prevent clickjacking
+        response.headers["X-Frame-Options"] = "DENY"
+        # Prevent MIME type sniffing
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Enable XSS protection (legacy browsers)
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        # Force HTTPS (max-age = 1 year)
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains; preload"
+        )
+        # Content Security Policy
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'"
+        )
+        # Referrer policy
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Permissions policy (disable unnecessary features)
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(), microphone=(), camera=(), payment=()"
+        )
+        return response
+
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/hour"])
 
 
 @asynccontextmanager
@@ -33,7 +102,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # Startup
     print("🚀 Starting Somnium ECMO Platform...")
-    print(f"📊 Initializing database connection...")
+    print("📊 Initializing database connection...")
     await init_db()
     print("✅ Database initialized successfully")
     print(f"🌐 CORS enabled for origins: {settings.CORS_ORIGINS}")
@@ -60,21 +129,55 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS Middleware
+# Security Middleware (order matters!)
+# 1. HTTPS Redirect (only in production)
+if not settings.DEBUG:
+    app.add_middleware(HTTPSRedirectMiddleware)
+
+# 2. Trusted Host (prevent Host header attacks)
+# app.add_middleware(
+#     TrustedHostMiddleware,
+#     allowed_hosts=["localhost", "127.0.0.1", "*.yourdomain.com"]
+# )
+
+# 3. Security Headers
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 4. CORS Middleware (more restrictive)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],  # Explicit methods only
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "X-CSRF-Token",
+    ],  # Include CSRF token header
+    expose_headers=["X-Total-Count"],  # Only expose what's needed
+    max_age=600,  # Cache preflight for 10 minutes
 )
+
+# Rate Limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Exception Handlers
 app.add_exception_handler(SomniumException, somnium_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(IntegrityError, integrity_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
+
+
+# CSRF Exception Handler
+@app.exception_handler(CsrfProtectError)
+async def csrf_protect_exception_handler(request: Request, exc: CsrfProtectError):
+    """Handle CSRF protection errors."""
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content={"detail": "CSRF token validation failed"},
+    )
 
 
 # Health Check Endpoint
@@ -110,6 +213,37 @@ async def root() -> dict:
         "docs": "/api/docs",
         "health": "/health",
     }
+
+
+# CSRF Token Endpoint
+@app.get(
+    "/api/v1/csrf-token",
+    tags=["Security"],
+    summary="Get CSRF token",
+    description="Get CSRF token for form submissions",
+)
+async def get_csrf_token(request: Request, response: Response):
+    """
+    Get CSRF token and set it in a cookie.
+
+    Returns:
+        CSRF token that should be included in X-CSRF-Token header
+    """
+    csrf_protect = CsrfProtect()
+    csrf_token, signed_token = csrf_protect.generate_csrf_tokens()
+
+    # Set CSRF token in cookie
+    response.set_cookie(
+        key=settings.CSRF_COOKIE_NAME,
+        value=signed_token,
+        max_age=3600,  # 1 hour
+        httponly=False,  # Must be accessible by JavaScript
+        secure=not settings.DEBUG,
+        samesite="lax",
+        path="/",
+    )
+
+    return {"csrf_token": csrf_token}
 
 
 # Register domain routers

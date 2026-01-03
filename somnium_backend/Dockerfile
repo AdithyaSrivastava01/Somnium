@@ -1,5 +1,6 @@
 # Multi-stage Dockerfile for Somnium ECMO Platform
-FROM python:3.11-slim AS base
+# Stage 1: Builder - Install dependencies
+FROM python:3.11-slim AS builder
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -8,7 +9,7 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     UV_SYSTEM_PYTHON=1
 
-# Install system dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     build-essential \
@@ -16,36 +17,53 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv globally using the official method for system-wide installation
+# Install uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     cp /root/.local/bin/uv /usr/local/bin/uv && \
-    cp /root/.local/bin/uvx /usr/local/bin/uvx && \
-    chmod 755 /usr/local/bin/uv /usr/local/bin/uvx
+    chmod 755 /usr/local/bin/uv
 
-# Create non-root user early
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies in virtual environment
+RUN uv sync --frozen --no-dev
+
+# Stage 2: Runtime - Minimal production image
+FROM python:3.11-slim AS runtime
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/.venv/bin:$PATH"
+
+# Install only runtime dependencies (no build tools)
+RUN apt-get update && apt-get install -y \
+    --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create non-root user
 RUN useradd -m -u 1000 somnium
 
-# Set working directory and ownership
+# Set working directory
 WORKDIR /app
-RUN chown somnium:somnium /app
 
-# Switch to non-root user for dependency installation
-USER somnium
-
-# Add virtual environment to PATH
-ENV PATH="/app/.venv/bin:$PATH"
-
-# Copy uv project files
-COPY --chown=somnium:somnium pyproject.toml uv.lock ./
-
-# Install dependencies using uv
-RUN uv sync --frozen --no-dev
+# Copy virtual environment from builder
+COPY --from=builder --chown=somnium:somnium /app/.venv /app/.venv
 
 # Copy application code
 COPY --chown=somnium:somnium app ./app
 COPY --chown=somnium:somnium alembic ./alembic
 COPY --chown=somnium:somnium alembic.ini ./
 COPY --chown=somnium:somnium scripts ./scripts
+
+# Switch to non-root user
+USER somnium
 
 # Expose port
 EXPOSE 8000

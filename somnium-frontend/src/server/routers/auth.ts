@@ -1,59 +1,91 @@
-import { z } from "zod";
 import { createTRPCRouter, publicProcedure, protectedProcedure } from "../trpc";
 import {
   loginSchema,
   registerSchema,
-  tokenResponseSchema,
   userSchema,
 } from "@/lib/validations/auth";
 import { TRPCError } from "@trpc/server";
+import { z } from "zod";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
+// Extended schemas with CSRF token
+const loginWithCsrfSchema = loginSchema.extend({
+  csrfToken: z.string(),
+});
+
+const registerWithCsrfSchema = registerSchema.extend({
+  csrfToken: z.string(),
+});
+
 export const authRouter = createTRPCRouter({
   // Login - calls FastAPI backend
-  login: publicProcedure.input(loginSchema).mutation(async ({ input }) => {
-    const res = await fetch(`${API_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: input.email,
-        password: input.password,
-        role: input.role,
-        remember_me: input.rememberMe, // Send remember me to backend
-      }),
-    });
+  login: publicProcedure
+    .input(loginWithCsrfSchema)
+    .mutation(async ({ input, ctx }) => {
+      const { csrfToken, ...loginData } = input;
 
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({}));
-      throw new TRPCError({
-        code: res.status === 403 ? "FORBIDDEN" : "UNAUTHORIZED",
-        message: error.error || error.detail || "Invalid credentials",
+      // Forward cookies from the client request
+      const cookieHeader = ctx.headers.get("cookie") || "";
+
+      console.log("=== tRPC Login Debug ===");
+      console.log("CSRF Token:", csrfToken);
+      console.log("Cookie Header:", cookieHeader);
+      console.log("Login Data:", loginData);
+
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken,
+          ...(cookieHeader && { Cookie: cookieHeader }),
+        },
+        body: JSON.stringify({
+          email: loginData.email,
+          password: loginData.password,
+          role: loginData.role,
+          remember_me: loginData.rememberMe,
+        }),
       });
-    }
 
-    const response = await res.json();
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new TRPCError({
+          code: res.status === 403 ? "FORBIDDEN" : "UNAUTHORIZED",
+          message: error.error || error.detail || "Invalid credentials",
+        });
+      }
 
-    // Backend returns { user: {...}, tokens: {...} }
-    return {
-      tokens: tokenResponseSchema.parse(response.tokens),
-      user: userSchema.parse(response.user),
-    };
-  }),
+      const user = await res.json();
+
+      // Backend now returns only user (tokens in httpOnly cookies)
+      return {
+        user: userSchema.parse(user),
+      };
+    }),
 
   // Register - calls FastAPI backend
   register: publicProcedure
-    .input(registerSchema)
-    .mutation(async ({ input }) => {
+    .input(registerWithCsrfSchema)
+    .mutation(async ({ input, ctx }) => {
+      const { csrfToken, ...registerData } = input;
+
+      // Forward cookies from the client request
+      const cookieHeader = ctx.headers.get("cookie") || "";
+
       const res = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken,
+          ...(cookieHeader && { Cookie: cookieHeader }),
+        },
         body: JSON.stringify({
-          email: input.email,
-          password: input.password,
-          full_name: input.full_name,
-          role: input.role,
-          department: input.department,
+          email: registerData.email,
+          password: registerData.password,
+          full_name: registerData.full_name,
+          role: registerData.role,
+          department: registerData.department,
         }),
       });
 
@@ -65,12 +97,11 @@ export const authRouter = createTRPCRouter({
         });
       }
 
-      const response = await res.json();
+      const user = await res.json();
 
-      // Backend returns { user: {...}, tokens: {...} }
+      // Backend now returns only user (tokens in httpOnly cookies)
       return {
-        tokens: tokenResponseSchema.parse(response.tokens),
-        user: userSchema.parse(response.user),
+        user: userSchema.parse(user),
       };
     }),
 
@@ -80,22 +111,46 @@ export const authRouter = createTRPCRouter({
   }),
 
   // Refresh token
-  refresh: publicProcedure
-    .input(z.object({ refresh_token: z.string() }))
-    .mutation(async ({ input }) => {
-      const res = await fetch(`${API_URL}/auth/refresh`, {
+  refresh: publicProcedure.mutation(async () => {
+    const res = await fetch(`${API_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include", // Send refresh token cookie
+    });
+
+    if (!res.ok) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "Invalid refresh token",
+      });
+    }
+
+    return await res.json();
+  }),
+
+  // Logout
+  logout: publicProcedure
+    .input(z.object({ csrfToken: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      // Forward cookies from the client request
+      const cookieHeader = ctx.headers.get("cookie") || "";
+
+      const res = await fetch(`${API_URL}/auth/logout`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": input.csrfToken,
+          ...(cookieHeader && { Cookie: cookieHeader }),
+        },
       });
 
       if (!res.ok) {
         throw new TRPCError({
-          code: "UNAUTHORIZED",
-          message: "Invalid refresh token",
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Logout failed",
         });
       }
 
-      return tokenResponseSchema.parse(await res.json());
+      return await res.json();
     }),
 });

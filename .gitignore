@@ -1,5 +1,16 @@
 # Root level gitignore for somnium project
 
+# CRITICAL SECURITY: Environment files with secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+
 # OS
 .DS_Store
 Thumbs.db
@@ -11,9 +22,62 @@ Thumbs.db
 *.swo
 *~
 
-# Logs
+# Logs (may contain sensitive data)
 *.log
+logs/
+*.log.*
 
 # Temporary files
 *.tmp
 *.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+.turbo/
+out/
+dist/
+*.tsbuildinfo
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+postgres_data/
+qdrant_data/
+
+# Docker
+*.env.docker
+
+# ML Models (if containing sensitive training data)
+models/*.pt
+models/*.pth
+models/*.h5
+!models/.gitkeep
+
+# Backups
+backup/
+*.backup
+*.sql
+
+# Certificates and keys
+ssl/
+certs/
+*.cer

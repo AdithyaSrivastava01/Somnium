@@ -6,20 +6,12 @@ import { ROLE_SCOPES } from "@/lib/validations/auth";
 
 interface AuthState {
   user: User | null;
-  token: string | null;
-  refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   _hasHydrated: boolean;
-  rememberMe: boolean;
 
   // Actions
-  setAuth: (
-    user: User,
-    token: string,
-    refreshToken: string,
-    rememberMe?: boolean,
-  ) => void;
+  setAuth: (user: User) => void;
   logout: () => void;
   setLoading: (loading: boolean) => void;
   setHasHydrated: (hydrated: boolean) => void;
@@ -31,32 +23,23 @@ export const useAuthStore = create<AuthState>()(
     persist(
       immer((set, get) => ({
         user: null,
-        token: null,
-        refreshToken: null,
         isAuthenticated: false,
         isLoading: true,
         _hasHydrated: false,
-        rememberMe: false,
 
-        setAuth: (user, token, refreshToken, rememberMe = false) => {
+        setAuth: (user) => {
           set((state) => {
             state.user = user;
-            state.token = token;
-            state.refreshToken = refreshToken;
             state.isAuthenticated = true;
             state.isLoading = false;
-            state.rememberMe = rememberMe;
           });
         },
 
         logout: () => {
           set((state) => {
             state.user = null;
-            state.token = null;
-            state.refreshToken = null;
             state.isAuthenticated = false;
             state.isLoading = false;
-            state.rememberMe = false;
           });
         },
 
@@ -83,10 +66,7 @@ export const useAuthStore = create<AuthState>()(
         name: "somnium-auth",
         partialize: (state) => ({
           user: state.user,
-          token: state.token,
-          refreshToken: state.refreshToken,
           isAuthenticated: state.isAuthenticated,
-          rememberMe: state.rememberMe,
         }),
         onRehydrateStorage: () => (state) => {
           state?.setHasHydrated(true);

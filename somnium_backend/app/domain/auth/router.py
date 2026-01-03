@@ -1,50 +1,107 @@
 """
-Authentication API endpoints.
+Authentication API endpoints with rate limiting for security.
 """
 
 from typing import Annotated
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, Response, Cookie, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from fastapi_csrf_protect import CsrfProtect
 
 from app.dependencies import get_auth_service, get_current_user
 from app.domain.auth.service import AuthService
 from app.domain.auth.models import User
 from app.domain.auth.schemas import (
     LoginRequest,
-    LoginResponse,
-    RefreshTokenRequest,
-    RefreshTokenResponse,
     RegisterRequest,
     UserResponse,
 )
+from app.core.audit import AuditService
+from app.core.config import settings
 
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post(
     "/login",
-    response_model=LoginResponse,
+    response_model=UserResponse,
     status_code=status.HTTP_200_OK,
     summary="User login",
-    description="Authenticate user with email, password, and role verification",
+    description="Authenticate user with email, password, and role verification. Sets httpOnly cookies for tokens.",
 )
+@limiter.limit("5/minute")  # Maximum 5 login attempts per minute per IP
 async def login(
-    request: LoginRequest,
+    request: Request,  # slowapi requires this to be named "request"
+    response: Response,
+    login_data: LoginRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
-) -> LoginResponse:
+    csrf_protect: CsrfProtect = Depends(),
+) -> UserResponse:
     """
     Login endpoint with role verification.
+    Sets httpOnly cookies for access_token and refresh_token.
 
     Args:
-        request: Login request with email, password, role, and remember_me
+        request: FastAPI request object
+        response: FastAPI response object
+        login_data: Login request with email, password, role, and remember_me
         auth_service: Authentication service
+        csrf_protect: CSRF protection
 
     Returns:
-        LoginResponse with user info and tokens
+        UserResponse with user info only (tokens in httpOnly cookies)
     """
-    return await auth_service.login(
-        request.email, request.password, request.role, request.remember_me
+    # Debug CSRF validation
+    print(f"DEBUG LOGIN: Request headers: {dict(request.headers)}")
+    print(f"DEBUG LOGIN: Request cookies: {request.cookies}")
+    print(f"DEBUG LOGIN: CSRF header: {request.headers.get('x-csrf-token')}")
+
+    # Validate CSRF token
+    try:
+        await csrf_protect.validate_csrf(request)
+        print("DEBUG LOGIN: CSRF validation passed")
+    except Exception as e:
+        print(f"DEBUG LOGIN: CSRF validation failed: {e}")
+        raise
+
+    result = await auth_service.login(
+        login_data.email,
+        login_data.password,
+        login_data.role,
+        login_data.remember_me,
+        ip_address=AuditService.get_client_ip(request),
+        user_agent=AuditService.get_user_agent(request),
     )
+
+    # Calculate cookie max_age based on remember_me
+    refresh_max_age = (
+        30 * 24 * 60 * 60 if login_data.remember_me else 7 * 24 * 60 * 60
+    )  # 30 days or 7 days
+
+    # Set httpOnly cookies for tokens
+    response.set_cookie(
+        key="access_token",
+        value=result.tokens.access_token,
+        httponly=True,
+        secure=not settings.DEBUG,  # HTTPS only in production
+        samesite="lax",  # Allow navigation from external sites
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=result.tokens.refresh_token,
+        httponly=True,
+        secure=not settings.DEBUG,  # HTTPS only in production
+        samesite="lax",  # Allow navigation from external sites
+        max_age=refresh_max_age,
+        path="/",
+    )
+
+    # Return only user info (no tokens)
+    return UserResponse.model_validate(result.user)
 
 
 @router.get(
@@ -71,58 +128,181 @@ async def get_me(
 
 @router.post(
     "/register",
-    response_model=LoginResponse,
+    response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
     summary="User registration",
-    description="Register a new user and return user info with JWT tokens",
+    description="Register a new user and return user info. Sets httpOnly cookies for tokens.",
 )
+@limiter.limit("3/hour")  # Maximum 3 registrations per hour per IP
 async def register(
-    request: RegisterRequest,
+    request: Request,  # slowapi requires this to be named "request"
+    response: Response,
+    register_data: RegisterRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
-) -> LoginResponse:
+    csrf_protect: CsrfProtect = Depends(),
+) -> UserResponse:
     """
     Register a new user.
+    Sets httpOnly cookies for access_token and refresh_token.
 
     Args:
-        request: Registration request with user details
+        request: FastAPI request object
+        response: FastAPI response object
+        register_data: Registration request with user details
         auth_service: Authentication service
+        csrf_protect: CSRF protection
 
     Returns:
-        LoginResponse with user info and tokens
+        UserResponse with user info only (tokens in httpOnly cookies)
     """
+    # Validate CSRF token
+    await csrf_protect.validate_csrf(request)
+
     # Create the user
-    user = await auth_service.create_user(
-        email=request.email,
-        password=request.password,
-        full_name=request.full_name,
-        role=request.role,
-        department=request.department,
+    await auth_service.create_user(
+        email=register_data.email,
+        password=register_data.password,
+        full_name=register_data.full_name,
+        role=register_data.role,
+        department=register_data.department,
+        ip_address=AuditService.get_client_ip(request),
+        user_agent=AuditService.get_user_agent(request),
     )
 
     # Login the newly created user
-    return await auth_service.login(request.email, request.password, request.role)
+    result = await auth_service.login(
+        register_data.email,
+        register_data.password,
+        register_data.role,
+        ip_address=AuditService.get_client_ip(request),
+        user_agent=AuditService.get_user_agent(request),
+    )
+
+    # Set httpOnly cookies for tokens (default to 7 days for registration)
+    response.set_cookie(
+        key="access_token",
+        value=result.tokens.access_token,
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=result.tokens.refresh_token,
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60,  # 7 days
+        path="/",
+    )
+
+    # Return only user info
+    return UserResponse.model_validate(result.user)
 
 
 @router.post(
     "/refresh",
-    response_model=RefreshTokenResponse,
     status_code=status.HTTP_200_OK,
     summary="Refresh access token",
-    description="Generate new access token using refresh token",
+    description="Generate new access token using refresh token from httpOnly cookie",
 )
+@limiter.limit("10/minute")  # Maximum 10 token refreshes per minute per IP
 async def refresh_token(
-    request: RefreshTokenRequest,
+    request: Request,  # slowapi requires this to be named "request"
+    response: Response,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
-) -> RefreshTokenResponse:
+    refresh_token: Annotated[str | None, Cookie()] = None,
+) -> dict:
     """
-    Refresh access token.
+    Refresh access token and rotate refresh token.
+    Reads refresh_token from httpOnly cookie and sets new tokens in cookies.
 
     Args:
-        request: Refresh token request
+        request: FastAPI request object
+        response: FastAPI response object
         auth_service: Authentication service
+        refresh_token: Refresh token from httpOnly cookie
 
     Returns:
-        New access token
+        Success message (tokens in httpOnly cookies)
     """
-    access_token = await auth_service.refresh_access_token(request.refresh_token)
-    return RefreshTokenResponse(access_token=access_token)
+    if not refresh_token:
+        from app.core.exceptions import AuthenticationError
+
+        raise AuthenticationError("Refresh token not found")
+
+    result = await auth_service.refresh_access_token(
+        refresh_token,
+        ip_address=AuditService.get_client_ip(request),
+        user_agent=AuditService.get_user_agent(request),
+    )
+
+    # Set new tokens in httpOnly cookies
+    response.set_cookie(
+        key="access_token",
+        value=result["access_token"],
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=result["refresh_token"],
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60,  # 7 days
+        path="/",
+    )
+
+    return {"message": "Token refreshed successfully"}
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_200_OK,
+    summary="User logout",
+    description="Revoke refresh token and clear httpOnly cookies",
+)
+async def logout(
+    request: Request,
+    response: Response,
+    current_user: Annotated[User, Depends(get_current_user)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    csrf_protect: CsrfProtect = Depends(),
+    refresh_token: Annotated[str | None, Cookie()] = None,
+):
+    """
+    Logout user by revoking refresh token and clearing cookies.
+
+    Args:
+        request: FastAPI request object
+        response: FastAPI response object
+        current_user: Current authenticated user
+        auth_service: Authentication service
+        csrf_protect: CSRF protection
+        refresh_token: Refresh token from httpOnly cookie
+
+    Returns:
+        Success message
+    """
+    # Validate CSRF token
+    await csrf_protect.validate_csrf(request)
+
+    # Revoke refresh token if present
+    if refresh_token:
+        await auth_service.revoke_refresh_token(
+            refresh_token,
+            ip_address=AuditService.get_client_ip(request),
+            user_agent=AuditService.get_user_agent(request),
+        )
+
+    # Clear httpOnly cookies
+    response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key="refresh_token", path="/")
+
+    return {"message": "Logged out successfully", "user_id": str(current_user.id)}

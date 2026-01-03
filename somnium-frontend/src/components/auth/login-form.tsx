@@ -8,6 +8,7 @@ import Link from "next/link";
 import { trpc } from "@/lib/trpc/client";
 import { useAuthStore } from "@/stores/auth-store";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
+import { getCsrfToken } from "@/hooks/use-csrf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -55,9 +56,9 @@ export function LoginForm() {
   });
 
   const loginMutation = trpc.auth.login.useMutation({
-    onSuccess: ({ tokens, user }) => {
-      const rememberMe = form.getValues("rememberMe");
-      setAuth(user, tokens.access_token, tokens.refresh_token, rememberMe);
+    onSuccess: ({ user }) => {
+      // Tokens are now in httpOnly cookies, only store user info
+      setAuth(user);
 
       // Redirect to the page they were trying to access, or dashboard
       const redirectTo = searchParams.get("redirect") || "/dashboard";
@@ -65,8 +66,14 @@ export function LoginForm() {
     },
   });
 
-  const onSubmit = (data: LoginInput) => {
-    loginMutation.mutate(data);
+  const onSubmit = async (data: LoginInput) => {
+    try {
+      const csrfToken = await getCsrfToken();
+      loginMutation.mutate({ ...data, csrfToken });
+    } catch (error) {
+      // Handle CSRF token fetch error
+      console.error("Failed to fetch CSRF token:", error);
+    }
   };
 
   return (

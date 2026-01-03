@@ -2,7 +2,6 @@
 Custom exceptions and error handlers.
 """
 
-from typing import Any, Dict
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -63,11 +62,17 @@ async def somnium_exception_handler(
     request: Request, exc: SomniumException
 ) -> JSONResponse:
     """Handle custom Somnium exceptions."""
+    print(f"DEBUG Exception: {exc}")
+    print(f"DEBUG Status Code: {exc.status_code}, Type: {type(exc.status_code)}")
     content = {"error": exc.message, "type": exc.__class__.__name__}
     if exc.error_code:
         content["error_code"] = exc.error_code
     return JSONResponse(
-        status_code=exc.status_code,
+        status_code=(
+            int(exc.status_code)
+            if isinstance(exc.status_code, str)
+            else exc.status_code
+        ),
         content=content,
     )
 
@@ -76,11 +81,26 @@ async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """Handle request validation errors."""
+    # Convert errors to JSON-serializable format
+    errors = []
+    for error in exc.errors():
+        error_dict = {
+            "type": error.get("type"),
+            "loc": error.get("loc"),
+            "msg": error.get("msg"),
+            "input": (
+                str(error.get("input")) if error.get("input") is not None else None
+            ),
+        }
+        if "ctx" in error:
+            error_dict["ctx"] = {k: str(v) for k, v in error["ctx"].items()}
+        errors.append(error_dict)
+
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "error": "Validation error",
-            "details": exc.errors(),
+            "details": errors,
         },
     )
 

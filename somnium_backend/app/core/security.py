@@ -4,7 +4,7 @@ Security utilities for JWT authentication and password hashing.
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
-from jose import JWTError, jwt
+from jose import jwt
 import bcrypt
 
 from app.core.config import settings
@@ -61,7 +61,10 @@ def create_access_token(
         expire = datetime.now(timezone.utc) + timedelta(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
-    to_encode.update({"exp": expire})
+    # Add token type and expiration
+    to_encode.update(
+        {"exp": expire, "type": "access", "iat": datetime.now(timezone.utc)}
+    )
     encoded_jwt = jwt.encode(
         to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
     )
@@ -88,7 +91,10 @@ def create_refresh_token(
         expire = datetime.now(timezone.utc) + timedelta(
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
         )
-    to_encode.update({"exp": expire, "type": "refresh"})
+    # Add token type, expiration, and issued-at time
+    to_encode.update(
+        {"exp": expire, "type": "refresh", "iat": datetime.now(timezone.utc)}
+    )
     encoded_jwt = jwt.encode(
         to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
     )

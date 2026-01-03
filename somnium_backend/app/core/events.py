@@ -3,9 +3,7 @@ Server-Sent Events (SSE) manager for real-time patient data updates.
 """
 
 import asyncio
-import json
 from typing import Dict, Set
-from uuid import UUID
 
 
 class SSEEventManager:

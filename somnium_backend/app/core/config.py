@@ -20,14 +20,19 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # Reduced from 30 to 15 minutes for security
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # Max 30 days with remember_me
 
     # Application
     APP_NAME: str = "Somnium ECMO Platform"
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+
+    # CSRF Protection
+    CSRF_SECRET_KEY: str | None = None  # Defaults to SECRET_KEY if not set
+    CSRF_COOKIE_NAME: str = "csrf_token"
+    CSRF_HEADER_NAME: str = "X-CSRF-Token"
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

@@ -3,6 +3,8 @@
 import { useAuthStore } from "@/stores/auth-store";
 import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { trpc } from "@/lib/trpc/client";
+import { clearCsrfToken, getCsrfToken } from "@/hooks/use-csrf";
 import {
   LogOut,
   Activity,
@@ -28,9 +30,32 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    router.push("/auth");
+  const logoutMutation = trpc.auth.logout.useMutation({
+    onSuccess: () => {
+      // Clear local state and CSRF token
+      logout();
+      clearCsrfToken();
+      router.push("/auth");
+    },
+    onError: () => {
+      // Even if backend logout fails, clear local state
+      logout();
+      clearCsrfToken();
+      router.push("/auth");
+    },
+  });
+
+  const handleLogout = async () => {
+    try {
+      const csrfToken = await getCsrfToken();
+      logoutMutation.mutate({ csrfToken });
+    } catch (error) {
+      console.error("Failed to fetch CSRF token:", error);
+      // Even if CSRF token fetch fails, attempt logout with local state clear
+      logout();
+      clearCsrfToken();
+      router.push("/auth");
+    }
   };
 
   const navigation = [
