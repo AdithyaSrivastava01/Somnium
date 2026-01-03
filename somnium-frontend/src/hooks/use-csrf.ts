@@ -14,13 +14,10 @@ let csrfPromise: Promise<string> | null = null;
  * Fetch CSRF token from the backend
  */
 async function fetchCsrfToken(): Promise<string> {
-  const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/csrf-token`,
-    {
-      method: "GET",
-      credentials: "include", // Include cookies
-    },
-  );
+  const response = await fetch("/api/csrf", {
+    method: "GET",
+    credentials: "include", // Include cookies
+  });
 
   if (!response.ok) {
     throw new Error("Failed to fetch CSRF token");

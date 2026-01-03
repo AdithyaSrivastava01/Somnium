@@ -53,18 +53,8 @@ async def login(
     Returns:
         UserResponse with user info only (tokens in httpOnly cookies)
     """
-    # Debug CSRF validation
-    print(f"DEBUG LOGIN: Request headers: {dict(request.headers)}")
-    print(f"DEBUG LOGIN: Request cookies: {request.cookies}")
-    print(f"DEBUG LOGIN: CSRF header: {request.headers.get('x-csrf-token')}")
-
     # Validate CSRF token
-    try:
-        await csrf_protect.validate_csrf(request)
-        print("DEBUG LOGIN: CSRF validation passed")
-    except Exception as e:
-        print(f"DEBUG LOGIN: CSRF validation failed: {e}")
-        raise
+    await csrf_protect.validate_csrf(request)
 
     result = await auth_service.login(
         login_data.email,

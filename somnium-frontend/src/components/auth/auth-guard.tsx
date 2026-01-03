@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
 import { Loader2 } from "lucide-react";
 import type { UserRole } from "@/lib/validations/auth";
+import { useSessionRestore } from "@/hooks/use-session-restore";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -22,9 +23,13 @@ export function AuthGuard({
   const { isAuthenticated, isLoading, user, hasScope, _hasHydrated } =
     useAuthStore();
 
+  // Restore session from cookies if available
+  const { sessionChecked, isValidatingSession } = useSessionRestore();
+
   useEffect(() => {
-    // Wait for store to hydrate from localStorage
-    if (!_hasHydrated || isLoading) return;
+    // Wait for store to hydrate from localStorage and session check
+    if (!_hasHydrated || isLoading || isValidatingSession) return;
+    if (!sessionChecked && !isAuthenticated) return;
 
     if (!isAuthenticated) {
       router.push(`/auth?redirect=${encodeURIComponent(pathname)}`);
@@ -43,6 +48,8 @@ export function AuthGuard({
   }, [
     isAuthenticated,
     isLoading,
+    isValidatingSession,
+    sessionChecked,
     user,
     allowedRoles,
     requiredScope,
@@ -52,7 +59,12 @@ export function AuthGuard({
     _hasHydrated,
   ]);
 
-  if (!_hasHydrated || isLoading) {
+  if (
+    !_hasHydrated ||
+    isLoading ||
+    isValidatingSession ||
+    (!sessionChecked && !isAuthenticated)
+  ) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

@@ -55,24 +55,55 @@ export function LoginForm() {
     },
   });
 
-  const loginMutation = trpc.auth.login.useMutation({
-    onSuccess: ({ user }) => {
-      // Tokens are now in httpOnly cookies, only store user info
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSubmit = async (data: LoginInput) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const csrfToken = await getCsrfToken();
+
+      // Call backend API through Next.js API route proxy (same origin = cookies work!)
+      const response = await fetch("/api/backend-proxy/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken,
+        },
+        credentials: "include", // CRITICAL: This allows cookies to be set
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          role: data.role,
+          remember_me: data.rememberMe,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Login failed" }));
+        throw new Error(
+          errorData.error || errorData.detail || "Invalid credentials",
+        );
+      }
+
+      const user = await response.json();
+
+      // Store user in auth store
       setAuth(user);
 
       // Redirect to the page they were trying to access, or dashboard
       const redirectTo = searchParams.get("redirect") || "/dashboard";
       router.push(redirectTo);
-    },
-  });
-
-  const onSubmit = async (data: LoginInput) => {
-    try {
-      const csrfToken = await getCsrfToken();
-      loginMutation.mutate({ ...data, csrfToken });
-    } catch (error) {
-      // Handle CSRF token fetch error
-      console.error("Failed to fetch CSRF token:", error);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "An error occurred during login",
+      );
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -80,12 +111,10 @@ export function LoginForm() {
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
         {/* Error Display */}
-        {loginMutation.error && (
+        {error && (
           <div className="flex items-start gap-3 p-3.5 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg">
             <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-            <span className="leading-relaxed">
-              {loginMutation.error.message}
-            </span>
+            <span className="leading-relaxed">{error}</span>
           </div>
         )}
 
@@ -231,9 +260,9 @@ export function LoginForm() {
         <Button
           type="submit"
           className="w-full h-12 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white shadow-lg shadow-teal-500/30"
-          disabled={loginMutation.isPending}
+          disabled={isLoading}
         >
-          {loginMutation.isPending ? (
+          {isLoading ? (
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
               <span>Signing In...</span>

@@ -28,11 +28,6 @@ export const authRouter = createTRPCRouter({
       // Forward cookies from the client request
       const cookieHeader = ctx.headers.get("cookie") || "";
 
-      console.log("=== tRPC Login Debug ===");
-      console.log("CSRF Token:", csrfToken);
-      console.log("Cookie Header:", cookieHeader);
-      console.log("Login Data:", loginData);
-
       const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: {
@@ -105,9 +100,39 @@ export const authRouter = createTRPCRouter({
       };
     }),
 
-  // Get current user
+  // Get current user (protected - requires Bearer token)
   me: protectedProcedure.query(async ({ ctx }) => {
     return ctx.user;
+  }),
+
+  // Validate session from cookies (public - for initial page load)
+  validateSession: publicProcedure.query(async ({ ctx }) => {
+    // Forward cookies from the client request
+    const cookieHeader = ctx.headers.get("cookie") || "";
+
+    if (!cookieHeader) {
+      return { user: null };
+    }
+
+    try {
+      // Call backend directly - we're on the server, so use the backend URL
+      const res = await fetch(`${API_URL}/auth/me`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(cookieHeader && { Cookie: cookieHeader }),
+        },
+      });
+
+      if (!res.ok) {
+        return { user: null };
+      }
+
+      const user = await res.json();
+      return { user: userSchema.parse(user) };
+    } catch (error) {
+      return { user: null };
+    }
   }),
 
   // Refresh token
