@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useIsAuthenticated } from "@/stores/auth-store";
+import { useValidAuth } from "@/hooks/use-valid-auth";
 import {
   Activity,
   Brain,
@@ -29,7 +29,8 @@ import {
 } from "lucide-react";
 
 export default function LandingPage() {
-  const isAuthenticated = useIsAuthenticated();
+  // SECURITY: Check if user has valid session (checks backend cookies)
+  const isAuthenticated = useValidAuth();
 
   const features = [
     {

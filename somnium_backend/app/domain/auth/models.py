@@ -20,6 +20,29 @@ import enum
 from app.core.database import Base
 
 
+class Hospital(Base):
+    """Hospital model for multi-hospital support."""
+
+    __tablename__ = "hospitals"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    city: Mapped[str] = mapped_column(String(100), nullable=False)
+    state: Mapped[str] = mapped_column(String(2), nullable=False)
+    email_domain: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # Relationships
+    users: Mapped[list["User"]] = relationship(
+        "User", back_populates="hospital", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Hospital(id={self.id}, name={self.name}, city={self.city}, state={self.state}, email_domain={self.email_domain})>"
+
+
 class UserRole(str, enum.Enum):
     """User roles for RBAC."""
 
@@ -45,6 +68,9 @@ class User(Base):
         SQLEnum(UserRole, name="user_role"), nullable=False
     )
     department: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    hospital_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hospitals.id"), nullable=False, index=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -66,6 +92,7 @@ class User(Base):
     )
 
     # Relationships
+    hospital: Mapped["Hospital"] = relationship("Hospital", back_populates="users")
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         "RefreshToken", back_populates="user", cascade="all, delete-orphan"
     )

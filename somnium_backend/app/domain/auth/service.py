@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.auth.models import User, UserRole, RefreshToken
+from app.domain.auth.models import User, UserRole, RefreshToken, Hospital
 from app.domain.auth.schemas import LoginResponse, UserResponse, TokenResponse
 from app.core.security import (
     verify_password,
@@ -142,8 +142,8 @@ class AuthService:
                 },
             )
             raise SomniumException(
+                f"Invalid role selected. This account is registered as {user.role.value}, not {role.value}",
                 403,
-                f"Role mismatch. This account is {user.role.value}, not {role.value}",
                 "ROLE_MISMATCH",
             )
 
@@ -404,6 +404,7 @@ class AuthService:
         password: str,
         full_name: str,
         role: UserRole,
+        hospital_id: UUID,
         department: str | None = None,
         ip_address: str = "unknown",
         user_agent: str | None = None,
@@ -416,6 +417,7 @@ class AuthService:
             password: Plain text password
             full_name: User's full name
             role: User role
+            hospital_id: Hospital UUID
             department: Optional department
             ip_address: Client IP address
             user_agent: Client user agent
@@ -424,7 +426,7 @@ class AuthService:
             Created user
 
         Raises:
-            SomniumException: If email already exists
+            SomniumException: If email already exists or admin limit reached for hospital
         """
         # Check if email exists
         stmt = select(User).where(User.email == email)
@@ -440,12 +442,85 @@ class AuthService:
             )
             raise SomniumException("Email already registered", 400, "EMAIL_EXISTS")
 
+        # SECURITY: Check if trying to create ADMIN role
+        if role == UserRole.ADMIN:
+            # Check if hospital already has an admin
+            stmt = select(User).where(
+                User.hospital_id == hospital_id,
+                User.role == UserRole.ADMIN,
+                User.is_active == True,
+            )
+            result = await self.db.execute(stmt)
+            existing_admin = result.scalar_one_or_none()
+
+            if existing_admin:
+                await self.audit_service.log_event(
+                    event_type="registration_failed",
+                    action="create",
+                    status="failure",
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    details={
+                        "reason": "admin_limit_reached",
+                        "email": email,
+                        "hospital_id": str(hospital_id),
+                    },
+                )
+                raise SomniumException(
+                    "This hospital already has an admin. Only one admin is allowed per hospital.",
+                    400,
+                    "ADMIN_LIMIT_REACHED",
+                )
+
+        # Verify hospital exists
+        stmt = select(Hospital).where(Hospital.id == hospital_id)
+        result = await self.db.execute(stmt)
+        hospital = result.scalar_one_or_none()
+
+        if not hospital:
+            await self.audit_service.log_event(
+                event_type="registration_failed",
+                action="create",
+                status="failure",
+                ip_address=ip_address,
+                user_agent=user_agent,
+                details={
+                    "reason": "hospital_not_found",
+                    "hospital_id": str(hospital_id),
+                },
+            )
+            raise SomniumException("Hospital not found", 404, "HOSPITAL_NOT_FOUND")
+
+        # SECURITY: Validate email domain matches hospital
+        email_domain = email.split("@")[-1].lower()
+        if email_domain != hospital.email_domain.lower():
+            await self.audit_service.log_event(
+                event_type="registration_failed",
+                action="create",
+                status="failure",
+                ip_address=ip_address,
+                user_agent=user_agent,
+                details={
+                    "reason": "email_domain_mismatch",
+                    "email": email,
+                    "expected_domain": hospital.email_domain,
+                    "provided_domain": email_domain,
+                    "hospital_id": str(hospital_id),
+                },
+            )
+            raise SomniumException(
+                f"Email domain must be @{hospital.email_domain} for {hospital.name}",
+                400,
+                "EMAIL_DOMAIN_MISMATCH",
+            )
+
         # Create user
         user = User(
             email=email,
             hashed_password=get_password_hash(password),
             full_name=full_name,
             role=role,
+            hospital_id=hospital_id,
             department=department,
         )
 
@@ -461,7 +536,18 @@ class AuthService:
             ip_address=ip_address,
             user_id=user.id,
             user_agent=user_agent,
-            details={"role": role.value},
+            details={"role": role.value, "hospital_id": str(hospital_id)},
         )
 
         return user
+
+    async def get_all_hospitals(self) -> list[Hospital]:
+        """
+        Get all hospitals for dropdown selection.
+
+        Returns:
+            List of all hospitals ordered by name
+        """
+        stmt = select(Hospital).order_by(Hospital.name)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())

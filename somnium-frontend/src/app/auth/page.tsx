@@ -3,9 +3,12 @@
 import { LoginForm } from "@/components/auth/login-form";
 import { RegisterForm } from "@/components/auth/register-form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Activity, Shield, CheckCircle2 } from "lucide-react";
+import { Activity, Shield, CheckCircle2, AlertCircle } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 export default function AuthPage() {
+  const searchParams = useSearchParams();
+  const sessionExpired = searchParams.get("session_expired") === "true";
   return (
     <div className="min-h-screen flex">
       {/* Left side - Form */}
@@ -27,6 +30,16 @@ export default function AuthPage() {
             </h1>
             <p className="text-gray-600">Clinical Intelligence System</p>
           </div>
+
+          {/* Session Expired Alert */}
+          {sessionExpired && (
+            <div className="mb-6 flex items-start gap-3 p-3.5 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span className="leading-relaxed">
+                Your session has expired. Please sign in again to continue.
+              </span>
+            </div>
+          )}
 
           {/* Tabs */}
           <Tabs defaultValue="login" className="w-full">

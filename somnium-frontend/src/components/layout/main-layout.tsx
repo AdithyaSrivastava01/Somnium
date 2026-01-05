@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc/client";
 import { clearCsrfToken, getCsrfToken } from "@/hooks/use-csrf";
+import { useSessionValidator } from "@/hooks/use-session-validator";
 import {
   LogOut,
   Activity,
@@ -29,6 +30,9 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // SECURITY: Validate session on every page load
+  useSessionValidator();
 
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: () => {

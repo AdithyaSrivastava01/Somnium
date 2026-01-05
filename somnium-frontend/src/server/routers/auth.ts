@@ -3,6 +3,7 @@ import {
   loginSchema,
   registerSchema,
   userSchema,
+  hospitalSchema,
 } from "@/lib/validations/auth";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -80,6 +81,7 @@ export const authRouter = createTRPCRouter({
           password: registerData.password,
           full_name: registerData.full_name,
           role: registerData.role,
+          hospital_id: registerData.hospital_id,
           department: registerData.department,
         }),
       });
@@ -178,4 +180,24 @@ export const authRouter = createTRPCRouter({
 
       return await res.json();
     }),
+
+  // Get all hospitals for dropdown
+  getHospitals: publicProcedure.query(async () => {
+    const res = await fetch(`${API_URL}/auth/hospitals`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to fetch hospitals",
+      });
+    }
+
+    const hospitals = await res.json();
+    return z.array(hospitalSchema).parse(hospitals);
+  }),
 });

@@ -34,6 +34,7 @@ class RegisterRequest(BaseModel):
     )
     role: UserRole = Field(..., description="User role")
     department: str | None = Field(None, max_length=100, description="User department")
+    hospital_id: UUID = Field(..., description="Hospital UUID")
 
     @field_validator("password")
     @classmethod
@@ -71,9 +72,24 @@ class UserResponse(BaseModel):
     full_name: str
     role: UserRole
     department: str | None
+    hospital_id: UUID
     is_active: bool
     created_at: datetime
     last_login: datetime | None
+
+    class Config:
+        from_attributes = True
+
+
+class HospitalResponse(BaseModel):
+    """Hospital response schema."""
+
+    id: UUID
+    name: str
+    city: str
+    state: str
+    email_domain: str
+    created_at: datetime
 
     class Config:
         from_attributes = True

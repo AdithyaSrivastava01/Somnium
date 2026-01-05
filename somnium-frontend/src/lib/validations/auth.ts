@@ -16,10 +16,22 @@ export const userSchema = z.object({
   full_name: z.string().min(1),
   role: userRoleSchema,
   department: z.string().nullable(),
+  hospital_id: z.string().uuid(),
   is_active: z.boolean(),
   created_at: z.string().datetime(),
 });
 export type User = z.infer<typeof userSchema>;
+
+// Hospital schema
+export const hospitalSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  city: z.string(),
+  state: z.string(),
+  email_domain: z.string(),
+  created_at: z.string().datetime(),
+});
+export type Hospital = z.infer<typeof hospitalSchema>;
 
 // Login schema
 export const loginSchema = z.object({
@@ -36,6 +48,7 @@ export const registerSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
   full_name: z.string().min(2, "Full name must be at least 2 characters"),
   role: userRoleSchema,
+  hospital_id: z.string().uuid("Please select a hospital"),
   department: z.string().optional(),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;

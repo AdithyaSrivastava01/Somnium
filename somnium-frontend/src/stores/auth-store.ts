@@ -41,6 +41,10 @@ export const useAuthStore = create<AuthState>()(
             state.isAuthenticated = false;
             state.isLoading = false;
           });
+          // SECURITY: Clear persisted state from localStorage
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("somnium-auth");
+          }
         },
 
         setLoading: (loading) => {

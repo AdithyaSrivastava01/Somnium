@@ -15,6 +15,7 @@ from app.domain.auth.schemas import (
     LoginRequest,
     RegisterRequest,
     UserResponse,
+    HospitalResponse,
 )
 from app.core.audit import AuditService
 from app.core.config import settings
@@ -154,6 +155,7 @@ async def register(
         password=register_data.password,
         full_name=register_data.full_name,
         role=register_data.role,
+        hospital_id=register_data.hospital_id,
         department=register_data.department,
         ip_address=AuditService.get_client_ip(request),
         user_agent=AuditService.get_user_agent(request),
@@ -296,3 +298,26 @@ async def logout(
     response.delete_cookie(key="refresh_token", path="/")
 
     return {"message": "Logged out successfully", "user_id": str(current_user.id)}
+
+
+@router.get(
+    "/hospitals",
+    response_model=list[HospitalResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get all hospitals",
+    description="Fetch list of all available hospitals for registration",
+)
+async def get_hospitals(
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> list[HospitalResponse]:
+    """
+    Get all hospitals for dropdown selection.
+
+    Args:
+        auth_service: Authentication service
+
+    Returns:
+        List of hospitals
+    """
+    hospitals = await auth_service.get_all_hospitals()
+    return [HospitalResponse.model_validate(hospital) for hospital in hospitals]
