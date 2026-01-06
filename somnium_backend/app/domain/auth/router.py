@@ -66,30 +66,47 @@ async def login(
         user_agent=AuditService.get_user_agent(request),
     )
 
-    # Calculate cookie max_age based on remember_me
-    refresh_max_age = (
-        30 * 24 * 60 * 60 if login_data.remember_me else 7 * 24 * 60 * 60
-    )  # 30 days or 7 days
-
     # Set httpOnly cookies for tokens
-    response.set_cookie(
-        key="access_token",
-        value=result.tokens.access_token,
-        httponly=True,
-        secure=not settings.DEBUG,  # HTTPS only in production
-        samesite="lax",  # Allow navigation from external sites
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        path="/",
-    )
-    response.set_cookie(
-        key="refresh_token",
-        value=result.tokens.refresh_token,
-        httponly=True,
-        secure=not settings.DEBUG,  # HTTPS only in production
-        samesite="lax",  # Allow navigation from external sites
-        max_age=refresh_max_age,
-        path="/",
-    )
+    # If remember_me is True: persistent cookies (30 days)
+    # If remember_me is False: session cookies (deleted when browser closes)
+    if login_data.remember_me:
+        # Persistent cookies with max_age
+        response.set_cookie(
+            key="access_token",
+            value=result.tokens.access_token,
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite="lax",
+            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            path="/",
+        )
+        response.set_cookie(
+            key="refresh_token",
+            value=result.tokens.refresh_token,
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite="lax",
+            max_age=30 * 24 * 60 * 60,  # 30 days
+            path="/",
+        )
+    else:
+        # Session cookies without max_age (deleted when browser closes)
+        response.set_cookie(
+            key="access_token",
+            value=result.tokens.access_token,
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite="lax",
+            path="/",
+        )
+        response.set_cookie(
+            key="refresh_token",
+            value=result.tokens.refresh_token,
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite="lax",
+            path="/",
+        )
 
     # Return only user info (no tokens)
     return UserResponse.model_validate(result.user)
@@ -170,14 +187,14 @@ async def register(
         user_agent=AuditService.get_user_agent(request),
     )
 
-    # Set httpOnly cookies for tokens (default to 7 days for registration)
+    # Set httpOnly session cookies for tokens (no remember_me for registration)
+    # Session cookies are deleted when the browser closes
     response.set_cookie(
         key="access_token",
         value=result.tokens.access_token,
         httponly=True,
         secure=not settings.DEBUG,
         samesite="lax",
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/",
     )
     response.set_cookie(
@@ -186,7 +203,6 @@ async def register(
         httponly=True,
         secure=not settings.DEBUG,
         samesite="lax",
-        max_age=7 * 24 * 60 * 60,  # 7 days
         path="/",
     )
 
