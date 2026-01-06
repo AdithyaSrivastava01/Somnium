@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PatientsList } from "@/components/dashboard/patients-list";
 import {
   Activity,
   Users,
@@ -360,191 +361,13 @@ export default function DashboardPage() {
                     Active ECMO Patients
                   </h2>
                   <p className="text-sm text-stone-600">
-                    Real-time monitoring and AI predictions
+                    Real-time patient vitals and monitoring
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-teal-700 hover:text-teal-800 hover:bg-teal-50"
-                >
-                  View All
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
               </div>
 
-              {/* Patient Cards */}
-              <div className="space-y-3">
-                {activePatients.map((patient) => (
-                  <Card
-                    key={patient.id}
-                    className="bg-white border-stone-200 hover:shadow-lg transition-all duration-200 hover:border-teal-200 group"
-                  >
-                    <CardContent className="p-5">
-                      <div className="space-y-4">
-                        {/* Patient Header */}
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 bg-gradient-to-br from-teal-100 to-cyan-100 rounded-lg flex items-center justify-center font-bold text-teal-800 text-lg">
-                              {patient.name.split(" ")[1]?.[0] || "P"}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-sm font-bold text-stone-900">
-                                  {patient.name}
-                                </span>
-                                <span className="text-xs text-stone-500">
-                                  ({patient.age}y, {patient.gender})
-                                </span>
-                                <Badge className="text-xs px-2 py-0 bg-stone-100 text-stone-700 border-stone-200">
-                                  {patient.id}
-                                </Badge>
-                              </div>
-                              <div className="flex items-center gap-2 text-xs">
-                                <Badge
-                                  className={`font-semibold ${getStatusColor(
-                                    patient.status,
-                                  )}`}
-                                >
-                                  {patient.status.toUpperCase()}
-                                </Badge>
-                                <span className="text-stone-600">
-                                  {patient.ecmoMode}
-                                </span>
-                                <span className="text-stone-400">•</span>
-                                <div className="flex items-center gap-1 text-stone-600">
-                                  <Timer className="w-3 h-3" />
-                                  {patient.duration}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* AI Survivability */}
-                          <div className="text-right">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Brain className="w-4 h-4 text-teal-600" />
-                              <span className="text-xs font-medium text-stone-600">
-                                AI Prediction
-                              </span>
-                            </div>
-                            <div
-                              className={`text-2xl font-bold tracking-tight ${
-                                patient.survivability >= 85
-                                  ? "text-teal-700"
-                                  : patient.survivability >= 70
-                                    ? "text-amber-700"
-                                    : "text-red-700"
-                              }`}
-                            >
-                              {patient.survivability}%
-                            </div>
-                            <p className="text-xs text-stone-500">
-                              survivability
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Vitals Grid */}
-                        <div className="grid grid-cols-5 gap-3 pt-3 border-t border-stone-100">
-                          {/* Heart Rate */}
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1 text-xs text-stone-500">
-                              <Heart className="w-3 h-3" />
-                              <span>HR</span>
-                            </div>
-                            <div
-                              className={`text-lg font-bold ${
-                                patient.vitals.heartRate > 100
-                                  ? "text-amber-700"
-                                  : "text-stone-900"
-                              }`}
-                            >
-                              {patient.vitals.heartRate}
-                            </div>
-                            <div className="text-xs text-stone-500">bpm</div>
-                          </div>
-
-                          {/* Blood Pressure */}
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1 text-xs text-stone-500">
-                              <Activity className="w-3 h-3" />
-                              <span>BP</span>
-                            </div>
-                            <div className="text-lg font-bold text-stone-900">
-                              {patient.vitals.bloodPressure.split("/")[0]}
-                            </div>
-                            <div className="text-xs text-stone-500">
-                              /{patient.vitals.bloodPressure.split("/")[1]} mmHg
-                            </div>
-                          </div>
-
-                          {/* SpO2 */}
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1 text-xs text-stone-500">
-                              <Wind className="w-3 h-3" />
-                              <span>SpO₂</span>
-                            </div>
-                            <div
-                              className={`text-lg font-bold ${
-                                patient.vitals.spo2 < 90
-                                  ? "text-amber-700"
-                                  : "text-stone-900"
-                              }`}
-                            >
-                              {patient.vitals.spo2}
-                            </div>
-                            <div className="text-xs text-stone-500">%</div>
-                          </div>
-
-                          {/* Temperature */}
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1 text-xs text-stone-500">
-                              <Thermometer className="w-3 h-3" />
-                              <span>Temp</span>
-                            </div>
-                            <div
-                              className={`text-lg font-bold ${
-                                patient.vitals.temperature > 38
-                                  ? "text-amber-700"
-                                  : "text-stone-900"
-                              }`}
-                            >
-                              {patient.vitals.temperature}
-                            </div>
-                            <div className="text-xs text-stone-500">°C</div>
-                          </div>
-
-                          {/* Flow Rate */}
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1 text-xs text-stone-500">
-                              <Droplet className="w-3 h-3" />
-                              <span>Flow</span>
-                            </div>
-                            <div className="text-lg font-bold text-teal-700">
-                              {patient.vitals.flowRate}
-                            </div>
-                            <div className="text-xs text-stone-500">L/min</div>
-                          </div>
-                        </div>
-
-                        {/* Action Button */}
-                        <div className="pt-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full text-teal-700 border-teal-200 hover:bg-teal-50 hover:border-teal-300 font-medium group-hover:bg-teal-700 group-hover:text-white transition-all duration-200"
-                          >
-                            <Stethoscope className="w-4 h-4 mr-2" />
-                            View Detailed Monitoring
-                            <ChevronRight className="w-4 h-4 ml-auto" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              {/* Real Patient Data */}
+              <PatientsList />
             </div>
 
             {/* Right Sidebar - Alerts & Quick Actions */}

@@ -20,10 +20,10 @@ export function useSSE<T = any>({
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const token = useAuthStore((state) => state.token);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   useEffect(() => {
-    if (!enabled || !token) {
+    if (!enabled || !isAuthenticated) {
       return;
     }
 
@@ -32,13 +32,12 @@ export function useSSE<T = any>({
 
     const connectSSE = async () => {
       try {
-        // Use fetch with Authorization header instead of token in URL
-        // This prevents token exposure in browser history and server logs
+        // Use fetch with cookie-based auth (credentials: include)
         const sseUrl = `${process.env.NEXT_PUBLIC_SSE_URL}${endpoint}`;
 
         const response = await fetch(sseUrl, {
+          credentials: "include", // Include cookies for authentication
           headers: {
-            Authorization: `Bearer ${token}`,
             Accept: "text/event-stream",
           },
           signal: abortController.signal,
@@ -102,7 +101,7 @@ export function useSSE<T = any>({
       abortControllerRef.current = null;
       setIsConnected(false);
     };
-  }, [endpoint, enabled, token, onMessage, onError]);
+  }, [endpoint, enabled, isAuthenticated, onMessage, onError]);
 
   return {
     data,

@@ -38,6 +38,9 @@ class Hospital(Base):
     users: Mapped[list["User"]] = relationship(
         "User", back_populates="hospital", cascade="all, delete-orphan"
     )
+    patients: Mapped[list["Patient"]] = relationship(
+        "Patient", back_populates="hospital", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Hospital(id={self.id}, name={self.name}, city={self.city}, state={self.state}, email_domain={self.email_domain})>"

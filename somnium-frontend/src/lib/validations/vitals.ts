@@ -1,31 +1,59 @@
 import { z } from "zod";
 
-// Vital signs schema
-export const vitalSignsSchema = z.object({
+// Vitals record schema (response from API)
+export const vitalsRecordSchema = z.object({
   id: z.string().uuid(),
   patient_id: z.string().uuid(),
-  timestamp: z.string().datetime(),
-  heart_rate: z.number().min(0).max(300).nullable(),
-  blood_pressure_systolic: z.number().min(0).max(300).nullable(),
-  blood_pressure_diastolic: z.number().min(0).max(300).nullable(),
-  respiratory_rate: z.number().min(0).max(100).nullable(),
-  temperature: z.number().min(20).max(45).nullable(), // Celsius
-  spo2: z.number().min(0).max(100).nullable(),
-  cvp: z.number().nullable(), // Central venous pressure
-  pao2: z.number().nullable(), // Arterial oxygen partial pressure
-  paco2: z.number().nullable(), // Arterial CO2 partial pressure
-  ph: z.number().min(6).max(8).nullable(),
-  lactate: z.number().nullable(),
+  recorded_by: z.string().uuid().nullable().optional(),
+  recorded_at: z.string().datetime(),
+  // Basic vitals
+  heart_rate: z.number().int().min(0).max(300).nullable().optional(),
+  blood_pressure_systolic: z.number().int().min(0).max(300).nullable().optional(),
+  blood_pressure_diastolic: z.number().int().min(0).max(300).nullable().optional(),
+  respiratory_rate: z.number().int().min(0).max(100).nullable().optional(),
+  temperature: z.number().min(20).max(45).nullable().optional(),
+  spo2: z.number().int().min(0).max(100).nullable().optional(),
+  // Advanced ECMO vitals
+  cvp: z.number().nullable().optional(),
+  pao2: z.number().nullable().optional(),
+  paco2: z.number().nullable().optional(),
+  ph: z.number().min(6).max(8).nullable().optional(),
+  lactate: z.number().nullable().optional(),
+  hco3: z.number().nullable().optional(),
+  // Notes
+  notes: z.string().nullable().optional(),
   created_at: z.string().datetime(),
 });
-export type VitalSigns = z.infer<typeof vitalSignsSchema>;
+export type VitalsRecord = z.infer<typeof vitalsRecordSchema>;
 
-// Create vital signs schema
-export const createVitalSignsSchema = vitalSignsSchema.omit({
-  id: true,
-  created_at: true,
+// Create vitals schema (for data entry)
+export const vitalsCreateSchema = z.object({
+  patient_id: z.string().uuid(),
+  recorded_at: z.string().datetime(),
+  // Basic vitals
+  heart_rate: z.number().int().min(0).max(300).optional(),
+  blood_pressure_systolic: z.number().int().min(0).max(300).optional(),
+  blood_pressure_diastolic: z.number().int().min(0).max(300).optional(),
+  respiratory_rate: z.number().int().min(0).max(100).optional(),
+  temperature: z.number().min(20).max(45).optional(),
+  spo2: z.number().int().min(0).max(100).optional(),
+  // Advanced ECMO vitals
+  cvp: z.number().optional(),
+  pao2: z.number().optional(),
+  paco2: z.number().optional(),
+  ph: z.number().min(6).max(8).optional(),
+  lactate: z.number().optional(),
+  hco3: z.number().optional(),
+  // Notes
+  notes: z.string().optional(),
 });
-export type CreateVitalSigns = z.infer<typeof createVitalSignsSchema>;
+export type VitalsCreate = z.infer<typeof vitalsCreateSchema>;
+
+// Legacy schemas for backward compatibility
+export const vitalSignsSchema = vitalsRecordSchema;
+export type VitalSigns = VitalsRecord;
+export const createVitalSignsSchema = vitalsCreateSchema;
+export type CreateVitalSigns = VitalsCreate;
 
 // Vital signs query schema
 export const vitalSignsQuerySchema = z.object({

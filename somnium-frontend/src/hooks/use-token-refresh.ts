@@ -19,7 +19,7 @@ const ACCESS_TOKEN_DURATION_MS = 15 * 60 * 1000; // 15 minutes (matches backend)
  */
 export function useTokenRefresh() {
   const { isAuthenticated, logout } = useAuthStore();
-  const refreshTimeoutRef = useRef<NodeJS.Timeout>();
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const scheduleRefresh = useCallback(async () => {
     if (!isAuthenticated) {

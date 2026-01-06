@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # Reduced from 30 to 15 minutes for security
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour for better UX during development
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # Max 30 days with remember_me
 
     # Application

@@ -248,11 +248,12 @@ async def get_csrf_token(request: Request, response: Response):
 
 # Register domain routers
 from app.domain.auth.router import router as auth_router
+from app.domain.patients.router import router as patients_router
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(patients_router, tags=["Patients"])
 
 # TODO: Register additional domain routers
-# from app.domain.patients.router import router as patients_router
 # from app.domain.vitals.router import router as vitals_router
 # from app.domain.labs.router import router as labs_router
 # from app.domain.alerts.router import router as alerts_router
@@ -260,8 +261,6 @@ app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
 # from app.domain.digital_twin.router import router as digital_twin_router
 # from app.domain.dashboard.router import router as dashboard_router
 # from app.domain.chatbot.router import router as chatbot_router
-
-# app.include_router(patients_router, prefix="/api/v1/patients", tags=["Patients"])
 # app.include_router(vitals_router, prefix="/api/v1", tags=["Vitals"])
 # app.include_router(labs_router, prefix="/api/v1", tags=["Labs"])
 # app.include_router(alerts_router, prefix="/api/v1", tags=["Alerts"])
