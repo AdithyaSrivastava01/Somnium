@@ -293,9 +293,19 @@ async def logout(
             user_agent=AuditService.get_user_agent(request),
         )
 
-    # Clear httpOnly cookies
-    response.delete_cookie(key="access_token", path="/")
-    response.delete_cookie(key="refresh_token", path="/")
+    # Clear httpOnly cookies - must match the attributes used when setting them
+    response.delete_cookie(
+        key="access_token",
+        path="/",
+        samesite="lax",
+        secure=not settings.DEBUG,
+    )
+    response.delete_cookie(
+        key="refresh_token",
+        path="/",
+        samesite="lax",
+        secure=not settings.DEBUG,
+    )
 
     return {"message": "Logged out successfully", "user_id": str(current_user.id)}
 

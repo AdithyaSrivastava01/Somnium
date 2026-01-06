@@ -13,19 +13,24 @@ import { trpc } from "@/lib/trpc/client";
 export function useSessionValidator() {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, logout, _hasHydrated } = useAuthStore();
+  const { isAuthenticated, logout, _hasHydrated, _lastAuthTime } =
+    useAuthStore();
 
-  const { data, error, isLoading } = trpc.auth.validateSession.useQuery(
-    undefined,
-    {
-      // Only run if user appears authenticated and state has hydrated
-      enabled: isAuthenticated && _hasHydrated,
+  // Add grace period after login to allow cookies to propagate
+  const GRACE_PERIOD_MS = 2000; // 2 seconds
+  const isWithinGracePeriod = _lastAuthTime
+    ? Date.now() - _lastAuthTime < GRACE_PERIOD_MS
+    : false;
+
+  const { data, error, isLoading, isFetched } =
+    trpc.auth.validateSession.useQuery(undefined, {
+      // Only run if user appears authenticated, state has hydrated, and grace period has passed
+      enabled: isAuthenticated && _hasHydrated && !isWithinGracePeriod,
       // Don't retry on auth errors
       retry: false,
       // Stale time of 30 seconds (don't re-fetch too often)
       staleTime: 30000,
-    },
-  );
+    });
 
   useEffect(() => {
     // Skip if on auth pages or still loading
@@ -33,8 +38,20 @@ export function useSessionValidator() {
       return;
     }
 
-    // If user appears authenticated but session validation returned no user
-    if (isAuthenticated && !isLoading && data && !data.user) {
+    // Skip validation during grace period after login
+    if (isWithinGracePeriod) {
+      return;
+    }
+
+    // CRITICAL: Only validate if query has actually fetched data AND we have a definitive response
+    // This prevents false positives during the initial query loading state
+    if (
+      isAuthenticated &&
+      !isLoading &&
+      isFetched &&
+      data !== undefined &&
+      data.user === null
+    ) {
       console.warn("Session validation failed, clearing auth state");
 
       // Clear auth state
@@ -46,11 +63,13 @@ export function useSessionValidator() {
   }, [
     data,
     isLoading,
+    isFetched,
     isAuthenticated,
     logout,
     router,
     pathname,
     _hasHydrated,
+    isWithinGracePeriod,
   ]);
 
   return { isValidating: isLoading, isValid: !!data?.user };

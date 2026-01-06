@@ -9,6 +9,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   _hasHydrated: boolean;
+  _lastAuthTime: number | null; // Timestamp of last authentication
 
   // Actions
   setAuth: (user: User) => void;
@@ -26,12 +27,14 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: false,
         isLoading: true,
         _hasHydrated: false,
+        _lastAuthTime: null,
 
         setAuth: (user) => {
           set((state) => {
             state.user = user;
             state.isAuthenticated = true;
             state.isLoading = false;
+            state._lastAuthTime = Date.now(); // Track when auth was set
           });
         },
 
@@ -40,6 +43,7 @@ export const useAuthStore = create<AuthState>()(
             state.user = null;
             state.isAuthenticated = false;
             state.isLoading = false;
+            state._lastAuthTime = null;
           });
           // SECURITY: Clear persisted state from localStorage
           if (typeof window !== "undefined") {
@@ -71,6 +75,7 @@ export const useAuthStore = create<AuthState>()(
         partialize: (state) => ({
           user: state.user,
           isAuthenticated: state.isAuthenticated,
+          _lastAuthTime: state._lastAuthTime,
         }),
         onRehydrateStorage: () => (state) => {
           state?.setHasHydrated(true);

@@ -30,34 +30,46 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const utils = trpc.useUtils();
 
   // SECURITY: Validate session on every page load
   useSessionValidator();
 
-  const logoutMutation = trpc.auth.logout.useMutation({
-    onSuccess: () => {
-      // Clear local state and CSRF token
-      logout();
-      clearCsrfToken();
-      router.push("/auth");
-    },
-    onError: () => {
-      // Even if backend logout fails, clear local state
-      logout();
-      clearCsrfToken();
-      router.push("/auth");
-    },
-  });
-
   const handleLogout = async () => {
     try {
       const csrfToken = await getCsrfToken();
-      logoutMutation.mutate({ csrfToken });
-    } catch (error) {
-      console.error("Failed to fetch CSRF token:", error);
-      // Even if CSRF token fetch fails, attempt logout with local state clear
+
+      // Call backend logout via proxy to ensure Set-Cookie headers are forwarded
+      const response = await fetch("/api/backend-proxy/auth/logout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken,
+        },
+        credentials: "include", // CRITICAL: Send cookies
+      });
+
+      if (!response.ok) {
+        console.error("Logout failed:", response.statusText);
+      }
+
+      // Clear local state and CSRF token regardless of response
       logout();
       clearCsrfToken();
+
+      // CRITICAL: Invalidate all auth queries to clear cached session data
+      utils.auth.validateSession.invalidate();
+
+      router.push("/auth");
+    } catch (error) {
+      console.error("Failed to logout:", error);
+      // Even if backend logout fails, clear local state
+      logout();
+      clearCsrfToken();
+
+      // CRITICAL: Invalidate all auth queries to clear cached session data
+      utils.auth.validateSession.invalidate();
+
       router.push("/auth");
     }
   };

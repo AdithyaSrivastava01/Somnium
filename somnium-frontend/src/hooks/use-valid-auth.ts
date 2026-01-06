@@ -16,14 +16,23 @@ export function useValidAuth(): boolean {
   const { _hasHydrated, isAuthenticated, setAuth, logout } = useAuthStore();
   const [isValidated, setIsValidated] = useState(false);
 
-  const { data, isLoading } = trpc.auth.validateSession.useQuery(undefined, {
-    enabled: _hasHydrated,
-    retry: false,
-    staleTime: 30000,
-  });
+  const { data, isLoading, isFetched } = trpc.auth.validateSession.useQuery(
+    undefined,
+    {
+      enabled: _hasHydrated,
+      retry: false,
+      staleTime: 30000,
+    },
+  );
 
   useEffect(() => {
     if (!_hasHydrated || isLoading) {
+      return;
+    }
+
+    // CRITICAL: Only validate after query has actually fetched
+    // This prevents showing stale cached data after logout
+    if (!isFetched || data === undefined) {
       return;
     }
 
@@ -42,7 +51,15 @@ export function useValidAuth(): boolean {
       }
       setIsValidated(false);
     }
-  }, [data, isLoading, _hasHydrated, isAuthenticated, setAuth, logout]);
+  }, [
+    data,
+    isLoading,
+    isFetched,
+    _hasHydrated,
+    isAuthenticated,
+    setAuth,
+    logout,
+  ]);
 
   return isValidated;
 }

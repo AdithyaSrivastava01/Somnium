@@ -5,7 +5,6 @@ import { httpBatchLink, loggerLink } from "@trpc/client";
 import { useState } from "react";
 import superjson from "superjson";
 import { trpc } from "./client";
-import { useAuthStore } from "@/stores/auth-store";
 
 function getBaseUrl() {
   if (typeof window !== "undefined") return "";
@@ -14,8 +13,6 @@ function getBaseUrl() {
 }
 
 export function TRPCProvider({ children }: { children: React.ReactNode }) {
-  const token = useAuthStore((state) => state.token);
-
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -40,8 +37,12 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
         httpBatchLink({
           url: `${getBaseUrl()}/api/trpc`,
           transformer: superjson,
-          headers() {
-            return token ? { Authorization: `Bearer ${token}` } : {};
+          // Use credentials to send cookies (auth is cookie-based)
+          fetch(url, options) {
+            return fetch(url, {
+              ...options,
+              credentials: "include",
+            });
           },
         }),
       ],

@@ -8,6 +8,17 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: false,
   },
+  // Webpack configuration for chunk loading
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Increase chunk loading timeout (default is 120000ms)
+      config.output = {
+        ...config.output,
+        chunkLoadTimeout: 300000, // 5 minutes
+      };
+    }
+    return config;
+  },
   // Security headers for HIPAA/SOC2 compliance
   async headers() {
     return [
