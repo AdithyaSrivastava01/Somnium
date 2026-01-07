@@ -232,7 +232,21 @@ export function VitalsEntryForm() {
               id="time"
               type="time"
               value={recordedTime}
-              onChange={(e) => setRecordedTime(e.target.value)}
+              onChange={(e) => {
+                const newTime = e.target.value;
+                setRecordedTime(newTime);
+
+                // Check if the new time would create a future timestamp
+                const [hours, minutes] = newTime.split(":").map(Number);
+                const datetime = new Date(recordedDate);
+                datetime.setHours(hours, minutes, 0, 0);
+
+                if (datetime > new Date()) {
+                  toast.error(
+                    "Recording time cannot be in the future. Please adjust the time.",
+                  );
+                }
+              }}
               required
             />
           </div>

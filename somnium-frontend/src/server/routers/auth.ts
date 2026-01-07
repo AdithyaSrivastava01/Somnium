@@ -117,12 +117,13 @@ export const authRouter = createTRPCRouter({
     }
 
     try {
-      // Call backend directly - we're on the server, so use the backend URL
+      // Call FastAPI backend directly and forward cookies
+      // Since this is server-to-server, we manually forward the Cookie header
       const res = await fetch(`${API_URL}/auth/me`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          ...(cookieHeader && { Cookie: cookieHeader }),
+          Cookie: cookieHeader,
         },
       });
 

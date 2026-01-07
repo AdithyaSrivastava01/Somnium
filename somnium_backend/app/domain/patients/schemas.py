@@ -45,6 +45,34 @@ class PatientCreate(PatientBase):
 
     hospital_id: UUID
 
+    @field_validator("date_of_birth", "admission_date", "ecmo_start_date")
+    @classmethod
+    def validate_dates_not_future(cls, v: datetime | None) -> datetime | None:
+        """Ensure dates are not in the future."""
+        if v is not None and v > datetime.utcnow():
+            raise ValueError("Date cannot be in the future")
+        return v
+
+    @field_validator("admission_date")
+    @classmethod
+    def validate_admission_after_birth(cls, v: datetime, info) -> datetime:
+        """Ensure admission date is after date of birth."""
+        if "date_of_birth" in info.data:
+            dob = info.data["date_of_birth"]
+            if v < dob:
+                raise ValueError("Admission date cannot be before date of birth")
+        return v
+
+    @field_validator("ecmo_start_date")
+    @classmethod
+    def validate_ecmo_after_admission(cls, v: datetime | None, info) -> datetime | None:
+        """Ensure ECMO start date is after admission date."""
+        if v is not None and "admission_date" in info.data:
+            admission = info.data["admission_date"]
+            if v < admission:
+                raise ValueError("ECMO start date cannot be before admission date")
+        return v
+
 
 class PatientUpdate(BaseModel):
     """Schema for updating a patient."""
@@ -63,6 +91,14 @@ class PatientUpdate(BaseModel):
     fio2: Optional[float] = Field(None, ge=0, le=1)
     status: Optional[PatientStatus] = None
     is_active: Optional[bool] = None
+
+    @field_validator("date_of_birth", "admission_date", "ecmo_start_date")
+    @classmethod
+    def validate_dates_not_future(cls, v: datetime | None) -> datetime | None:
+        """Ensure dates are not in the future."""
+        if v is not None and v > datetime.utcnow():
+            raise ValueError("Date cannot be in the future")
+        return v
 
 
 class PatientResponse(PatientBase):

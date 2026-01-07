@@ -17,20 +17,36 @@ export function useSessionValidator() {
     useAuthStore();
 
   // Add grace period after login to allow cookies to propagate
-  const GRACE_PERIOD_MS = 2000; // 2 seconds
-  const isWithinGracePeriod = _lastAuthTime
-    ? Date.now() - _lastAuthTime < GRACE_PERIOD_MS
-    : false;
+  // Increased to 10s to handle HMR (Hot Module Reload) during development
+  const GRACE_PERIOD_MS = 10000; // 10 seconds
+  const timeSinceLogin = _lastAuthTime ? Date.now() - _lastAuthTime : Infinity;
+  const isWithinGracePeriod = timeSinceLogin < GRACE_PERIOD_MS;
 
-  const { data, error, isLoading, isFetched } =
-    trpc.auth.validateSession.useQuery(undefined, {
-      // Only run if user appears authenticated, state has hydrated, and grace period has passed
-      enabled: isAuthenticated && _hasHydrated && !isWithinGracePeriod,
+  // CRITICAL: Completely disable query during grace period
+  // This prevents any race conditions or timing issues
+  const shouldValidate =
+    isAuthenticated &&
+    _hasHydrated &&
+    _lastAuthTime !== null &&
+    timeSinceLogin >= GRACE_PERIOD_MS &&
+    !pathname.startsWith("/auth");
+
+  const { data, isLoading, isFetched } = trpc.auth.validateSession.useQuery(
+    undefined,
+    {
+      // Only enable query if ALL validation criteria are met
+      enabled: shouldValidate,
       // Don't retry on auth errors
       retry: false,
-      // Stale time of 30 seconds (don't re-fetch too often)
-      staleTime: 30000,
-    });
+      // CRITICAL: Never use cached data - always fetch fresh from server
+      staleTime: 0,
+      gcTime: 0, // Renamed from cacheTime in newer TanStack Query
+      // Prevent refetching on window focus
+      refetchOnWindowFocus: false,
+      // ALWAYS refetch on mount when enabled
+      refetchOnMount: "always",
+    },
+  );
 
   useEffect(() => {
     // Skip if on auth pages or still loading
@@ -45,15 +61,15 @@ export function useSessionValidator() {
 
     // CRITICAL: Only validate if query has actually fetched data AND we have a definitive response
     // This prevents false positives during the initial query loading state
+    // ALSO: Never log out during grace period, even if validation somehow runs
     if (
       isAuthenticated &&
       !isLoading &&
       isFetched &&
       data !== undefined &&
-      data.user === null
+      data.user === null &&
+      !isWithinGracePeriod // Extra safety: never logout during grace period
     ) {
-      console.warn("Session validation failed, clearing auth state");
-
       // Clear auth state
       logout();
 
@@ -70,6 +86,7 @@ export function useSessionValidator() {
     pathname,
     _hasHydrated,
     isWithinGracePeriod,
+    _lastAuthTime,
   ]);
 
   return { isValidating: isLoading, isValid: !!data?.user };

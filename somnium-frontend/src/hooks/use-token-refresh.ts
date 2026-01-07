@@ -9,8 +9,8 @@
 import { useEffect, useCallback, useRef } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 
-const TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000; // Refresh 2 minutes before expiry
-const ACCESS_TOKEN_DURATION_MS = 15 * 60 * 1000; // 15 minutes (matches backend)
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // Refresh 5 minutes before expiry
+const ACCESS_TOKEN_DURATION_MS = 60 * 60 * 1000; // 60 minutes (matches backend config)
 
 /**
  * Hook to automatically refresh access tokens before they expire.

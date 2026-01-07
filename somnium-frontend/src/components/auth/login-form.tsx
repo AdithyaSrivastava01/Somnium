@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { trpc } from "@/lib/trpc/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/auth-store";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { getCsrfToken } from "@/hooks/use-csrf";
@@ -44,6 +45,7 @@ export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const setAuth = useAuthStore((state) => state.setAuth);
+  const queryClient = useQueryClient();
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
@@ -92,8 +94,17 @@ export function LoginForm() {
 
       const user = await response.json();
 
-      // Store user in auth store
+      // Store user in auth store FIRST (sets _lastAuthTime for grace period)
       setAuth(user);
+
+      // CRITICAL: Clear ALL cached queries (removes cached data completely)
+      // This is stronger than invalidate - it deletes the cache entirely
+      // Ensures validateSession will fetch fresh with new cookies, not use old cached {user: null}
+      queryClient.clear();
+
+      // Small delay to ensure cookies are fully set in browser before navigation
+      // This prevents race conditions where validateSession runs before cookies are ready
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Redirect to the page they were trying to access, or dashboard
       const redirectTo = searchParams.get("redirect") || "/dashboard";

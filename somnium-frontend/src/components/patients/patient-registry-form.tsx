@@ -38,8 +38,13 @@ import { Calendar } from "@/components/ui/calendar";
 export function PatientRegistryForm() {
   const { user } = useAuthStore();
   const [dateOfBirth, setDateOfBirth] = useState<Date>();
+  const [dateOfBirthTime, setDateOfBirthTime] = useState<string>("00:00");
   const [admissionDate, setAdmissionDate] = useState<Date>(new Date());
+  const [admissionTime, setAdmissionTime] = useState<string>(
+    format(new Date(), "HH:mm"),
+  );
   const [ecmoStartDate, setEcmoStartDate] = useState<Date>();
+  const [ecmoStartTime, setEcmoStartTime] = useState<string>("00:00");
 
   const form = useForm<PatientCreate>({
     resolver: zodResolver(patientCreateSchema),
@@ -56,8 +61,11 @@ export function PatientRegistryForm() {
       toast.success("Patient registered successfully");
       form.reset();
       setDateOfBirth(undefined);
+      setDateOfBirthTime("00:00");
       setAdmissionDate(new Date());
+      setAdmissionTime(format(new Date(), "HH:mm"));
       setEcmoStartDate(undefined);
+      setEcmoStartTime("00:00");
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.detail || "Failed to register patient");
@@ -69,6 +77,41 @@ export function PatientRegistryForm() {
       toast.error("Hospital information not found");
       return;
     }
+
+    // Validate that dates are not in the future
+    const now = new Date();
+
+    if (dateOfBirth) {
+      const [hours, minutes] = dateOfBirthTime.split(":").map(Number);
+      const dobDateTime = new Date(dateOfBirth);
+      dobDateTime.setHours(hours, minutes, 0, 0);
+
+      if (dobDateTime > now) {
+        toast.error("Date of birth cannot be in the future");
+        return;
+      }
+    }
+
+    const [admHours, admMinutes] = admissionTime.split(":").map(Number);
+    const admissionDateTime = new Date(admissionDate);
+    admissionDateTime.setHours(admHours, admMinutes, 0, 0);
+
+    if (admissionDateTime > now) {
+      toast.error("Admission date/time cannot be in the future");
+      return;
+    }
+
+    if (ecmoStartDate) {
+      const [ecmoHours, ecmoMinutes] = ecmoStartTime.split(":").map(Number);
+      const ecmoDateTime = new Date(ecmoStartDate);
+      ecmoDateTime.setHours(ecmoHours, ecmoMinutes, 0, 0);
+
+      if (ecmoDateTime > now) {
+        toast.error("ECMO start date/time cannot be in the future");
+        return;
+      }
+    }
+
     createPatientMutation.mutate(data);
   };
 
@@ -147,39 +190,66 @@ export function PatientRegistryForm() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Date of Birth *</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start text-left font-normal"
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dateOfBirth ? (
-                    format(dateOfBirth, "PPP")
-                  ) : (
-                    <span className="text-muted-foreground">Pick a date</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={dateOfBirth}
-                  onSelect={(date) => {
-                    setDateOfBirth(date);
-                    if (date) {
-                      form.setValue("date_of_birth", date.toISOString());
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Date of Birth *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-left font-normal"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateOfBirth ? (
+                      format(dateOfBirth, "PPP")
+                    ) : (
+                      <span className="text-muted-foreground">Pick a date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={dateOfBirth}
+                    onSelect={(date) => {
+                      setDateOfBirth(date);
+                      if (date) {
+                        const [hours, minutes] = dateOfBirthTime
+                          .split(":")
+                          .map(Number);
+                        const datetime = new Date(date);
+                        datetime.setHours(hours, minutes, 0, 0);
+                        form.setValue("date_of_birth", datetime.toISOString());
+                      }
+                    }}
+                    disabled={(date) =>
+                      date > new Date() || date < new Date("1900-01-01")
                     }
-                  }}
-                  disabled={(date) =>
-                    date > new Date() || date < new Date("1900-01-01")
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="dob_time">Time of Birth</Label>
+              <Input
+                id="dob_time"
+                type="time"
+                value={dateOfBirthTime}
+                onChange={(e) => {
+                  setDateOfBirthTime(e.target.value);
+                  if (dateOfBirth) {
+                    const [hours, minutes] = e.target.value
+                      .split(":")
+                      .map(Number);
+                    const datetime = new Date(dateOfBirth);
+                    datetime.setHours(hours, minutes, 0, 0);
+                    form.setValue("date_of_birth", datetime.toISOString());
                   }
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+                }}
+              />
+            </div>
           </div>
         </div>
 
@@ -187,7 +257,7 @@ export function PatientRegistryForm() {
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">Clinical Information</h3>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>Admission Date *</Label>
               <Popover>
@@ -207,7 +277,12 @@ export function PatientRegistryForm() {
                     onSelect={(date) => {
                       if (date) {
                         setAdmissionDate(date);
-                        form.setValue("admission_date", date.toISOString());
+                        const [hours, minutes] = admissionTime
+                          .split(":")
+                          .map(Number);
+                        const datetime = new Date(date);
+                        datetime.setHours(hours, minutes, 0, 0);
+                        form.setValue("admission_date", datetime.toISOString());
                       }
                     }}
                     disabled={(date) => date > new Date()}
@@ -215,6 +290,25 @@ export function PatientRegistryForm() {
                   />
                 </PopoverContent>
               </Popover>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="admission_time">Admission Time *</Label>
+              <Input
+                id="admission_time"
+                type="time"
+                value={admissionTime}
+                onChange={(e) => {
+                  setAdmissionTime(e.target.value);
+                  const [hours, minutes] = e.target.value
+                    .split(":")
+                    .map(Number);
+                  const datetime = new Date(admissionDate);
+                  datetime.setHours(hours, minutes, 0, 0);
+                  form.setValue("admission_date", datetime.toISOString());
+                }}
+                required
+              />
             </div>
 
             <div className="space-y-2">
@@ -254,7 +348,7 @@ export function PatientRegistryForm() {
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">ECMO Configuration</h3>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>ECMO Start Date</Label>
               <Popover>
@@ -280,7 +374,15 @@ export function PatientRegistryForm() {
                     onSelect={(date) => {
                       setEcmoStartDate(date);
                       if (date) {
-                        form.setValue("ecmo_start_date", date.toISOString());
+                        const [hours, minutes] = ecmoStartTime
+                          .split(":")
+                          .map(Number);
+                        const datetime = new Date(date);
+                        datetime.setHours(hours, minutes, 0, 0);
+                        form.setValue(
+                          "ecmo_start_date",
+                          datetime.toISOString(),
+                        );
                       }
                     }}
                     disabled={(date) => date > new Date()}
@@ -288,6 +390,27 @@ export function PatientRegistryForm() {
                   />
                 </PopoverContent>
               </Popover>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ecmo_start_time">ECMO Start Time</Label>
+              <Input
+                id="ecmo_start_time"
+                type="time"
+                value={ecmoStartTime}
+                onChange={(e) => {
+                  setEcmoStartTime(e.target.value);
+                  if (ecmoStartDate) {
+                    const [hours, minutes] = e.target.value
+                      .split(":")
+                      .map(Number);
+                    const datetime = new Date(ecmoStartDate);
+                    datetime.setHours(hours, minutes, 0, 0);
+                    form.setValue("ecmo_start_date", datetime.toISOString());
+                  }
+                }}
+                disabled={!ecmoStartDate}
+              />
             </div>
 
             <div className="space-y-2">
@@ -356,8 +479,11 @@ export function PatientRegistryForm() {
             onClick={() => {
               form.reset();
               setDateOfBirth(undefined);
+              setDateOfBirthTime("00:00");
               setAdmissionDate(new Date());
+              setAdmissionTime(format(new Date(), "HH:mm"));
               setEcmoStartDate(undefined);
+              setEcmoStartTime("00:00");
             }}
           >
             Clear Form
