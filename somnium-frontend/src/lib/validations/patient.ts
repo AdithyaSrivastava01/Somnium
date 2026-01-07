@@ -57,22 +57,40 @@ export type PatientWithLatestVitals = z.infer<
   typeof patientWithLatestVitalsSchema
 >;
 
-// Create patient schema
+// Create patient schema (with optional initial vitals)
 export const patientCreateSchema = z.object({
   mrn: z.string().min(1).max(50),
   first_name: z.string().min(1).max(100),
   last_name: z.string().min(1).max(100),
-  date_of_birth: z.string().datetime(),
+  date_of_birth: z.string().datetime({ offset: true }),
   gender: genderSchema,
   hospital_id: z.string().uuid(),
   diagnosis: z.string().optional(),
-  admission_date: z.string().datetime(),
-  ecmo_start_date: z.string().datetime().optional(),
+  admission_date: z.string().datetime({ offset: true }),
+  ecmo_start_date: z.string().datetime({ offset: true }).optional(),
   ecmo_mode: ecmoModeSchema.optional(),
   flow_rate: z.number().min(0).optional(),
   sweep_gas: z.number().min(0).optional(),
   fio2: z.number().min(0).max(1).optional(),
   status: patientStatusSchema.default("active"),
+  // Initial vitals (optional, recorded at admission time)
+  initial_vitals: z
+    .object({
+      heart_rate: z.number().int().min(0).max(300).optional(),
+      blood_pressure_systolic: z.number().int().min(0).max(300).optional(),
+      blood_pressure_diastolic: z.number().int().min(0).max(300).optional(),
+      respiratory_rate: z.number().int().min(0).max(100).optional(),
+      temperature: z.number().min(20).max(45).optional(),
+      spo2: z.number().int().min(0).max(100).optional(),
+      cvp: z.number().optional(),
+      pao2: z.number().optional(),
+      paco2: z.number().optional(),
+      ph: z.number().min(6).max(8).optional(),
+      lactate: z.number().optional(),
+      hco3: z.number().optional(),
+      notes: z.string().optional(),
+    })
+    .optional(),
 });
 export type PatientCreate = z.infer<typeof patientCreateSchema>;
 

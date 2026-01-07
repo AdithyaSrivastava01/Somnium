@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -34,8 +35,27 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
+// Helper function to convert Date to ISO string with local timezone
+function toLocalISOString(date: Date): string {
+  const tzOffset = -date.getTimezoneOffset();
+  const tzSign = tzOffset >= 0 ? "+" : "-";
+  const tzHours = String(Math.floor(Math.abs(tzOffset) / 60)).padStart(2, "0");
+  const tzMinutes = String(Math.abs(tzOffset) % 60).padStart(2, "0");
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  const second = String(date.getSeconds()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}${tzSign}${tzHours}:${tzMinutes}`;
+}
+
 export function VitalsEntryForm() {
+  const router = useRouter();
   const { user } = useAuthStore();
+  const [showSuccess, setShowSuccess] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string>("");
   const [recordedDate, setRecordedDate] = useState<Date>(new Date());
   const [recordedTime, setRecordedTime] = useState<string>(
@@ -79,23 +99,29 @@ export function VitalsEntryForm() {
     const [hours, minutes] = recordedTime.split(":").map(Number);
     const datetime = new Date(recordedDate);
     datetime.setHours(hours, minutes, 0, 0);
-    form.setValue("recorded_at", datetime.toISOString());
+    form.setValue("recorded_at", toLocalISOString(datetime));
   }, [recordedDate, recordedTime, form]);
 
   const createVitalsMutation = useMutation({
     mutationFn: (data: VitalsCreate) => patientsApi.createVitals(data),
     onSuccess: () => {
       toast.success("Vitals recorded successfully");
-      form.reset();
-      setSelectedPatientId("");
-      setRecordedDate(new Date());
-      setRecordedTime(format(new Date(), "HH:mm"));
+      setShowSuccess(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
       refetchEntryCheck();
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.detail || "Failed to record vitals");
     },
   });
+
+  const handleReset = () => {
+    form.reset();
+    setSelectedPatientId("");
+    setRecordedDate(new Date());
+    setRecordedTime(format(new Date(), "HH:mm"));
+    setShowSuccess(false);
+  };
 
   const onSubmit = (data: VitalsCreate) => {
     if (!entryCheck?.can_enter) {
@@ -125,6 +151,34 @@ export function VitalsEntryForm() {
           Enter patient vital signs (can only be recorded every 12 hours)
         </p>
       </div>
+
+      {showSuccess && (
+        <Alert className="border-green-500 bg-green-50">
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-green-800">
+              Vitals recorded successfully!
+            </span>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleReset}
+                className="border-green-600 text-green-700 hover:bg-green-100"
+              >
+                Record More Vitals
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => router.push("/dashboard")}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                Go to Dashboard
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Patient Selection */}
       <div className="space-y-2">
@@ -408,14 +462,7 @@ export function VitalsEntryForm() {
 
         {/* Submit Button */}
         <div className="flex justify-end gap-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              form.reset();
-              setSelectedPatientId("");
-            }}
-          >
+          <Button type="button" variant="outline" onClick={handleReset}>
             Clear
           </Button>
           <Button

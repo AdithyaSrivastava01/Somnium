@@ -27,7 +27,7 @@ class PatientService:
         db: AsyncSession,
         patient_data: PatientCreate,
     ) -> Patient:
-        """Create a new patient."""
+        """Create a new patient with optional initial vitals."""
         # Check if hospital exists
         hospital_result = await db.execute(
             select(Hospital).where(Hospital.id == patient_data.hospital_id)
@@ -54,11 +54,26 @@ class PatientService:
                 detail=f"Patient with MRN {patient_data.mrn} already exists in this hospital",
             )
 
-        # Create patient
-        patient = Patient(**patient_data.model_dump())
+        # Extract initial vitals if provided
+        initial_vitals_data = patient_data.initial_vitals
+
+        # Create patient (exclude initial_vitals from patient data)
+        patient_dict = patient_data.model_dump(exclude={"initial_vitals"})
+        patient = Patient(**patient_dict)
         db.add(patient)
         await db.commit()
         await db.refresh(patient)
+
+        # If initial vitals were provided, create vitals entry at admission time
+        if initial_vitals_data:
+            vitals = PatientVitals(
+                patient_id=patient.id,
+                recorded_at=patient.admission_date,
+                **initial_vitals_data.model_dump(exclude_none=True),
+            )
+            db.add(vitals)
+            await db.commit()
+
         return patient
 
     @staticmethod

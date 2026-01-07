@@ -40,17 +40,85 @@ class PatientBase(BaseModel):
     status: PatientStatus = PatientStatus.ACTIVE
 
 
+class InitialVitals(BaseModel):
+    """Schema for initial vitals during patient registration."""
+
+    heart_rate: Optional[int] = Field(None, ge=0, le=300)
+    blood_pressure_systolic: Optional[int] = Field(None, ge=0, le=300)
+    blood_pressure_diastolic: Optional[int] = Field(None, ge=0, le=300)
+    respiratory_rate: Optional[int] = Field(None, ge=0, le=100)
+    temperature: Optional[float] = Field(None, ge=20, le=45)
+    spo2: Optional[int] = Field(None, ge=0, le=100)
+    cvp: Optional[float] = None
+    pao2: Optional[float] = None
+    paco2: Optional[float] = None
+    ph: Optional[float] = Field(None, ge=6.0, le=8.0)
+    lactate: Optional[float] = Field(None, ge=0)
+    hco3: Optional[float] = Field(None, ge=0)
+    notes: Optional[str] = None
+
+
 class PatientCreate(PatientBase):
     """Schema for creating a new patient."""
 
     hospital_id: UUID
+    initial_vitals: Optional[InitialVitals] = None
 
-    @field_validator("date_of_birth", "admission_date", "ecmo_start_date")
+    @field_validator(
+        "date_of_birth", "admission_date", "ecmo_start_date", mode="before"
+    )
     @classmethod
-    def validate_dates_not_future(cls, v: datetime | None) -> datetime | None:
-        """Ensure dates are not in the future."""
-        if v is not None and v > datetime.utcnow():
-            raise ValueError("Date cannot be in the future")
+    def validate_dates_not_future(
+        cls, v: str | datetime | None
+    ) -> str | datetime | None:
+        """Ensure dates are not in the future and preserve local timezone."""
+        from datetime import timezone
+
+        if v is None:
+            return v
+
+        # If it's a string (ISO 8601 from frontend), parse it
+        if isinstance(v, str):
+            dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+
+            # Get current time in UTC for comparison
+            now_utc = datetime.now(timezone.utc)
+
+            # Check if it's in the future
+            if dt > now_utc:
+                raise ValueError("Date cannot be in the future")
+
+            # Extract local time components to preserve user's timezone
+            if dt.tzinfo is not None:
+                return datetime(
+                    dt.year,
+                    dt.month,
+                    dt.day,
+                    dt.hour,
+                    dt.minute,
+                    dt.second,
+                    dt.microsecond,
+                )
+            else:
+                return dt
+
+        # If it's already a datetime object
+        if isinstance(v, datetime):
+            now_utc = datetime.now(timezone.utc)
+
+            if v.tzinfo is not None:
+                if v > now_utc:
+                    raise ValueError("Date cannot be in the future")
+                # Extract local time components
+                return datetime(
+                    v.year, v.month, v.day, v.hour, v.minute, v.second, v.microsecond
+                )
+            else:
+                now_naive = datetime.now()
+                if v > now_naive:
+                    raise ValueError("Date cannot be in the future")
+                return v
+
         return v
 
     @field_validator("admission_date")
@@ -92,12 +160,61 @@ class PatientUpdate(BaseModel):
     status: Optional[PatientStatus] = None
     is_active: Optional[bool] = None
 
-    @field_validator("date_of_birth", "admission_date", "ecmo_start_date")
+    @field_validator(
+        "date_of_birth", "admission_date", "ecmo_start_date", mode="before"
+    )
     @classmethod
-    def validate_dates_not_future(cls, v: datetime | None) -> datetime | None:
-        """Ensure dates are not in the future."""
-        if v is not None and v > datetime.utcnow():
-            raise ValueError("Date cannot be in the future")
+    def validate_dates_not_future(
+        cls, v: str | datetime | None
+    ) -> str | datetime | None:
+        """Ensure dates are not in the future and preserve local timezone."""
+        from datetime import timezone
+
+        if v is None:
+            return v
+
+        # If it's a string (ISO 8601 from frontend), parse it
+        if isinstance(v, str):
+            dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+
+            # Get current time in UTC for comparison
+            now_utc = datetime.now(timezone.utc)
+
+            # Check if it's in the future
+            if dt > now_utc:
+                raise ValueError("Date cannot be in the future")
+
+            # Extract local time components to preserve user's timezone
+            if dt.tzinfo is not None:
+                return datetime(
+                    dt.year,
+                    dt.month,
+                    dt.day,
+                    dt.hour,
+                    dt.minute,
+                    dt.second,
+                    dt.microsecond,
+                )
+            else:
+                return dt
+
+        # If it's already a datetime object
+        if isinstance(v, datetime):
+            now_utc = datetime.now(timezone.utc)
+
+            if v.tzinfo is not None:
+                if v > now_utc:
+                    raise ValueError("Date cannot be in the future")
+                # Extract local time components
+                return datetime(
+                    v.year, v.month, v.day, v.hour, v.minute, v.second, v.microsecond
+                )
+            else:
+                now_naive = datetime.now()
+                if v > now_naive:
+                    raise ValueError("Date cannot be in the future")
+                return v
+
         return v
 
 
@@ -170,19 +287,64 @@ class VitalsBase(BaseModel):
     # Notes
     notes: Optional[str] = None
 
-    @field_validator("recorded_at")
-    @classmethod
-    def validate_recorded_at(cls, v: datetime) -> datetime:
-        """Ensure recorded_at is not in the future."""
-        if v > datetime.utcnow():
-            raise ValueError("recorded_at cannot be in the future")
-        return v
-
 
 class VitalsCreate(VitalsBase):
     """Schema for creating new vitals entry."""
 
     patient_id: UUID
+
+    @field_validator("recorded_at", mode="before")
+    @classmethod
+    def validate_recorded_at(cls, v) -> datetime:
+        """Ensure recorded_at is not in the future and preserve local timezone."""
+        from datetime import timezone
+
+        # If it's a string (ISO 8601 from frontend), parse it ourselves
+        if isinstance(v, str):
+            # Parse the datetime string with the user's timezone
+            dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+
+            # Get current time in UTC for comparison
+            now_utc = datetime.now(timezone.utc)
+
+            # Check if it's in the future
+            if dt > now_utc:
+                raise ValueError("recorded_at cannot be in the future")
+
+            # Extract the local time components from the user's timezone
+            # This preserves the exact time the user sees (e.g., 00:17 stays as 00:17)
+            if dt.tzinfo is not None:
+                # Create a naive datetime with the same local time values
+                return datetime(
+                    dt.year,
+                    dt.month,
+                    dt.day,
+                    dt.hour,
+                    dt.minute,
+                    dt.second,
+                    dt.microsecond,
+                )
+            else:
+                return dt
+
+        # If it's already a datetime object (shouldn't happen with mode="before")
+        if isinstance(v, datetime):
+            now_utc = datetime.now(timezone.utc)
+
+            if v.tzinfo is not None:
+                if v > now_utc:
+                    raise ValueError("recorded_at cannot be in the future")
+                # Extract local time components
+                return datetime(
+                    v.year, v.month, v.day, v.hour, v.minute, v.second, v.microsecond
+                )
+            else:
+                now_naive = datetime.now()
+                if v > now_naive:
+                    raise ValueError("recorded_at cannot be in the future")
+                return v
+
+        return v
 
 
 class VitalsResponse(VitalsBase):
